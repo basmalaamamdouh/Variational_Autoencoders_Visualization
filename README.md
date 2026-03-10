@@ -4,7 +4,7 @@
 An interactive browser app for exploring a **16-dimensional disentangled latent space** 
 trained on CelebA faces using a β-Variational Autoencoder (β=4).
 
-**Live demo → [Try it here](https://YOUR_USERNAME.github.io/bvae-face-explorer)**
+**Live demo → [Try it here]("https://sweet-sharing-hub.lovable.app"))**
 
 ---
 
@@ -41,7 +41,7 @@ After downloading, load it in the app via the **Load Files** tab.
 ## How to use
 
 ### Option A — Live Demo (recommended)
-1. Open the [live demo](https://YOUR_USERNAME.github.io/bvae-face-explorer)
+1. Open the [live demo](https://sweet-sharing-hub.lovable.app)
 2. Go to **Load Files** tab
 3. Click Browse next to `vae_decoder.onnx` → select the file downloaded from Google Drive above
 4. Click Browse next to `attr_vectors.json` → select it from the repo
