@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>β-VAE · Face Latent Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a26;
+    --border: #2a2a3a;
+    --accent: #7c3aed;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --green: #10b981;
+    --red: #ef4444;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,58,237,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,58,237,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(12px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo h1 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span {
+    color: var(--muted);
+    font-size: 13px;
+    font-family: 'Space Mono', monospace;
+    margin-top: 2px;
+    display: block;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.ready { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .status-dot.loading { background: var(--accent3); animation: pulse 1s infinite; }
+  .status-dot.error { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 0;
+    height: calc(100vh - 73px);
+  }
+
+  /* LEFT PANEL */
+  .left-panel {
+    padding: 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  /* Canvas area */
+  .canvas-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .image-frame {
+    position: relative;
+    width: 320px; height: 320px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .image-frame::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .image-frame.generating::before { opacity: 1; }
+
+  canvas#output {
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+    display: block;
+  }
+
+  .image-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10,10,15,0.85);
+    border-radius: 16px;
+    transition: opacity 0.3s;
+  }
+
+  .image-overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .spinner {
+    width: 40px; height: 40px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .load-prompt {
+    text-align: center;
+    padding: 20px;
+  }
+  .load-prompt p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .load-prompt .big { font-size: 40px; margin-bottom: 12px; }
+
+  /* Image meta */
+  .image-meta {
+    display: flex;
+    gap: 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .meta-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+  }
+
+  /* Action buttons */
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  button {
+    font-family: 'Syne', sans-serif;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .btn-primary:hover { background: #6d28d9; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+  /* Latent vector display */
+  .latent-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .latent-cell {
+    height: 24px;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+
+  .latent-fill {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    transition: width 0.2s, background 0.2s;
+  }
+
+  .latent-val {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 8px;
+    color: var(--text);
+    z-index: 1;
+  }
+
+  /* RIGHT PANEL — Sliders */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 14px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    background: transparent;
+  }
+
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px;
+    display: none;
+  }
+  .tab-content.active { display: block; }
+
+  /* Sliders */
+  .slider-group {
+    margin-bottom: 20px;
+  }
+
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .slider-label {
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slider-emoji { font-size: 16px; }
+
+  .slider-dim {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface2);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .slider-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 8px rgba(124,58,237,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  input[type=range]:hover::-webkit-slider-thumb {
+    transform: scale(1.2);
+    box-shadow: 0 0 16px rgba(124,58,237,0.8);
+  }
+
+  /* Raw dim sliders */
+  .dim-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .dim-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    min-width: 32px;
+  }
+
+  .dim-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent2);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+  }
+
+  .upload-area:hover {
+    border-color: var(--accent);
+    background: rgba(124,58,237,0.05);
+  }
+
+  .upload-area p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Load model section */
+  .model-loader {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .model-loader h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .model-loader p { font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .file-status {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .file-status.ok { background: var(--green); }
+
+  .file-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    flex: 1;
+    color: var(--muted);
+  }
+
+  .file-label.ok { color: var(--text); }
+
+  input[type=file] { display: none; }
+
+  .btn-file {
+    background: var(--surface);
+    color: var(--muted);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: 'Syne', sans-serif;
+  }
+  .btn-file:hover { color: var(--text); border-color: var(--accent); }
+
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 2px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* Interpolation */
+  .interp-points {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .interp-point {
+    flex: 1;
+    height: 80px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--muted);
+    transition: all 0.2s;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .interp-point:hover { border-color: var(--accent); color: var(--text); }
+  .interp-point.set { border-color: var(--accent); background: rgba(124,58,237,0.1); }
+
+  .interp-preview {
+    width: 50px; height: 50px;
+    border-radius: 6px;
+    object-fit: cover;
+    display: none;
+  }
+
+  .interp-point.set .interp-preview { display: block; }
+  .interp-point.set .interp-text { display: none; }
+
+  /* Notification */
+  .notif {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 13px;
+    z-index: 100;
+    transition: transform 0.3s;
+    white-space: nowrap;
+  }
+  .notif.show { transform: translateX(-50%) translateY(0); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .left-panel { border-right: none; border-bottom: 1px solid var(--border); padding: 20px; }
+    header { padding: 16px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧠</div>
+    <div>
+      <h1>β-VAE Explorer</h1>
+      <span>CelebA · 16D Latent Space · β=4</span>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Load your model files →</span>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: image + latent viz -->
+  <div class="left-panel">
+    <div class="canvas-area">
+      <div class="section-label">Generated Output</div>
+
+      <div class="image-frame" id="imageFrame">
+        <canvas id="output" width="64" height="64"></canvas>
+        <div class="image-overlay" id="imageOverlay">
+          <div class="load-prompt">
+            <div class="big">🎨</div>
+            <p>Load <code>vae_decoder.onnx</code> and<br/><code>attr_vectors.json</code> to begin</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="image-meta">
+        <div class="meta-chip" id="inferTime">— ms</div>
+        <div class="meta-chip">64×64 px</div>
+        <div class="meta-chip">16D latent</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="btnGenerate" disabled onclick="generateRandom()">⚡ Random</button>
+        <button class="btn-secondary" id="btnReset" disabled onclick="resetLatent()">↺ Reset</button>
+        <button class="btn-ghost" id="btnSave" disabled onclick="saveImage()">↓ Save</button>
+        <button class="btn-ghost" id="btnSaveA" disabled onclick="saveAsPointA()">Set A</button>
+        <button class="btn-ghost" id="btnSaveB" disabled onclick="saveAsPointB()">Set B</button>
+      </div>
+    </div>
+
+    <!-- Latent vector visualizer -->
+    <div>
+      <div class="section-label">Latent Vector z ∈ ℝ¹⁶</div>
+      <div class="latent-grid" id="latentGrid"></div>
+    </div>
+
+    <!-- Interpolation -->
+    <div>
+      <div class="section-label">Interpolation A → B</div>
+      <div class="interp-points">
+        <div class="interp-point" id="pointA" onclick="loadPoint('A')">
+          <canvas class="interp-preview" id="previewA" width="64" height="64"></canvas>
+          <span class="interp-text" style="font-size:20px">A</span>
+          <span class="interp-text">Click to set</span>
+        </div>
+        <div class="interp-point" id="pointB" onclick="loadPoint('B')">
+          <canvas class="interp-preview" id="previewB" width="64" height="64"></canvas>
+          <span class="interp-text" style="font-size:20px">B</span>
+          <span class="interp-text">Click to set</span>
+        </div>
+      </div>
+      <input type="range" id="interpSlider" min="0" max="100" value="0"
+             oninput="interpolate(this.value)" style="margin-bottom:8px"/>
+      <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);text-align:center">
+        t = <span id="interpT">0.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: controls -->
+  <div class="right-panel">
+    <div class="panel-tabs">
+      <button class="tab active" onclick="switchTab('semantic')">Semantic</button>
+      <button class="tab" onclick="switchTab('dims')">Raw Dims</button>
+      <button class="tab" onclick="switchTab('load')">Load Files</button>
+    </div>
+
+    <!-- SEMANTIC SLIDERS TAB -->
+    <div class="tab-content active" id="tab-semantic">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.5">
+        Move sliders to edit facial attributes. Each slider pushes the latent vector
+        along the learned semantic direction.
+      </p>
+      <div id="semanticSliders">
+        <p style="color:var(--muted);font-size:13px">Load attr_vectors.json to see semantic sliders.</p>
+      </div>
+    </div>
+
+    <!-- RAW DIMS TAB -->
+    <div class="tab-content" id="tab-dims">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
+        Directly control each of the 16 latent dimensions.
+      </p>
+      <div id="dimSliders"></div>
+    </div>
+
+    <!-- LOAD FILES TAB -->
+    <div class="tab-content active" id="tab-load" style="display:block">
+      <div class="model-loader">
+        <h3>Load Model Files</h3>
+        <p>Select the 2 files exported from your Kaggle notebook. Files are processed locally — nothing is uploaded.</p>
+
+        <div class="file-row">
+          <div class="file-status" id="onnxStatus"></div>
+          <span class="file-label" id="onnxLabel">vae_decoder.onnx</span>
+          <label class="btn-file" for="onnxFile">Browse</label>
+          <input type="file" id="onnxFile" accept=".onnx" onchange="loadOnnx(this)"/>
+        </div>
+
+        <div class="file-row">
+          <div class="file-status" id="jsonStatus"></div>
+          <span class="file-label" id="jsonLabel">attr_vectors.json</span>
+          <label class="btn-file" for="jsonFile">Browse</label>
+          <input type="file" id="jsonFile" accept=".json" onchange="loadJson(this)"/>
+        </div>
+
+        <div class="progress-bar"><div class="progress-fill" id="loadProgress"></div></div>
+      </div>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;font-size:12px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--text);display:block;margin-bottom:8px">How to use</strong>
+        1. Run your Kaggle notebook completely<br/>
+        2. Download <code style="color:var(--accent2)">vae_decoder.onnx</code> and <code style="color:var(--accent2)">attr_vectors.json</code> from the Output tab<br/>
+        3. Load them here — inference runs entirely in your browser via ONNX Runtime Web<br/>
+        4. Use the <strong style="color:var(--text)">Semantic</strong> tab to edit faces with sliders<br/>
+        5. Use <strong style="color:var(--text)">Set A / Set B</strong> buttons to interpolate between two faces
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="notif" id="notif"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────
+let session = null;
+let attrData = null;
+const LATENT_DIM = 16;
+
+// Current latent vector
+let z = new Float32Array(LATENT_DIM);
+
+// Semantic slider offsets (scale factors per attribute)
+let semanticOffsets = {};  // { attrName: float }
+
+// Interpolation points
+let pointA = null, pointB = null;
+
+// ─── Init latent grid ─────────────────────────────────────────
+function initLatentGrid() {
+  const grid = document.getElementById('latentGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'latent-cell';
+    cell.id = `lc${i}`;
+    cell.innerHTML = `<div class="latent-fill" id="lf${i}"></div><div class="latent-val" id="lv${i}">0.0</div>`;
+    grid.appendChild(cell);
+  }
+}
+
+function updateLatentGrid() {
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const v = z[i];
+    const clamped = Math.max(-3, Math.min(3, v));
+    const pct = (Math.abs(clamped) / 3) * 50;
+    const fill = document.getElementById(`lf${i}`);
+    const val  = document.getElementById(`lv${i}`);
+    fill.style.width  = pct + '%';
+    fill.style.background = v >= 0 ? 'rgba(124,58,237,0.6)' : 'rgba(6,182,212,0.6)';
+    if (v >= 0) { fill.style.left = '50%'; fill.style.right = 'auto'; }
+    else        { fill.style.right = '50%'; fill.style.left = 'auto'; }
+    val.textContent = v.toFixed(1);
+  }
+}
+
+// ─── Init raw dim sliders ─────────────────────────────────────
+function initDimSliders() {
+  const container = document.getElementById('dimSliders');
+  container.innerHTML = '';
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const label = attrData?.dim_labels?.[String(i)] || `dim_${i}`;
+    const row = document.createElement('div');
+    row.className = 'dim-slider-row';
+    row.innerHTML = `
+      <span class="dim-tag">z[${i}]</span>
+      <input type="range" min="-3" max="3" step="0.05" value="0"
+             oninput="setDim(${i}, parseFloat(this.value))" id="ds${i}"/>
+      <span class="dim-val" id="dv${i}">0.00</span>
+    `;
+    container.appendChild(row);
+  }
+}
+
+function setDim(i, val) {
+  z[i] = val;
+  document.getElementById(`dv${i}`).textContent = val.toFixed(2);
+  updateLatentGrid();
+  runInference();
+}
+
+// ─── Semantic sliders ─────────────────────────────────────────
+const ATTR_META = {
+  Smiling:      { emoji: '😊', color: '#f59e0b' },
+  Young:        { emoji: '🌱', color: '#10b981' },
+  Male:         { emoji: '🧔', color: '#60a5fa' },
+  Eyeglasses:   { emoji: '🕶️', color: '#a78bfa' },
+  Bald:         { emoji: '🪩', color: '#fb923c' },
+  Blond_Hair:   { emoji: '👱', color: '#fbbf24' },
+  Pale_Skin:    { emoji: '🌙', color: '#94a3b8' },
+  Heavy_Makeup: { emoji: '💄', color: '#f472b6' },
+  Wearing_Hat:  { emoji: '🎩', color: '#34d399' },
+  Wavy_Hair:    { emoji: '〰️', color: '#7c3aed' },
+};
+
+function buildSemanticSliders() {
+  const container = document.getElementById('semanticSliders');
+  container.innerHTML = '';
+  if (!attrData) return;
+
+  for (const [name, info] of Object.entries(attrData.attributes)) {
+    semanticOffsets[name] = 0;
+    const meta = ATTR_META[name] || { emoji: '🎛', color: '#6b6b8a' };
+    const label = name.replace('_', ' ');
+
+    const group = document.createElement('div');
+    group.className = 'slider-group';
+    group.innerHTML = `
+      <div class="slider-header">
+        <div class="slider-label">
+          <span class="slider-emoji">${meta.emoji}</span>
+          ${label}
+          <span class="slider-dim">z[${info.best_dim}]</span>
+        </div>
+        <span class="slider-value" id="sv_${name}">0.00</span>
+      </div>
+      <input type="range" min="-3" max="3" step="0.05" value="0"
+             id="ss_${name}"
+             oninput="setSemantic('${name}', parseFloat(this.value))"
+             style="--thumb-color:${meta.color}"/>
+    `;
+    container.appendChild(group);
+  }
+}
+
+function setSemantic(name, val) {
+  semanticOffsets[name] = val;
+  document.getElementById(`sv_${name}`).textContent = val.toFixed(2);
+  recomputeZ();
+  runInference();
+}
+
+function recomputeZ() {
+  // Start from base zero
+  const newZ = new Float32Array(LATENT_DIM);
+
+  // Add each semantic direction * its slider value
+  for (const [name, scale] of Object.entries(semanticOffsets)) {
+    const info = attrData?.attributes?.[name];
+    if (!info) continue;
+    const dir = info.direction;
+    for (let i = 0; i < LATENT_DIM; i++) {
+      newZ[i] += dir[i] * scale * 3;  // scale * 3 for ±3 range
+    }
+  }
+
+  z = newZ;
+  // Sync raw dim sliders
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const slider = document.getElementById(`ds${i}`);
+    if (slider) { slider.value = z[i]; }
+    const val = document.getElementById(`dv${i}`);
+    if (val) val.textContent = z[i].toFixed(2);
+  }
+  updateLatentGrid();
+}
+
+// ─── File loading ─────────────────────────────────────────────
+async function loadOnnx(input) {
+  const file = input.files[0];
+  if (!file) return;
+  setStatus('loading', 'Loading ONNX model...');
+  document.getElementById('loadProgress').style.width = '30%';
+  try {
+    const buf = await file.arrayBuffer();
+    document.getElementById('loadProgress').style.width = '60%';
+    session = await ort.InferenceSession.create(buf);
+    document.getElementById('loadProgress').style.width = '80%';
+    document.getElementById('onnxStatus').classList.add('ok');
+    document.getElementById('onnxLabel').textContent = file.name;
+    document.getElementById('onnxLabel').classList.add('ok');
+    notify('✅ ONNX model loaded');
+    checkReady();
+  } catch(e) {
+    setStatus('error', 'ONNX load failed');
+    notify('❌ ' + e.message);
+  }
+}
+
+async function loadJson(input) {
+  const file = input.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    attrData = JSON.parse(text);
+    document.getElementById('jsonStatus').classList.add('ok');
+    document.getElementById('jsonLabel').textContent = file.name;
+    document.getElementById('jsonLabel').classList.add('ok');
+    buildSemanticSliders();
+    initDimSliders();
+    notify('✅ Attribute vectors loaded');
+    checkReady();
+  } catch(e) {
+    notify('❌ JSON parse failed: ' + e.message);
+  }
+}
+
+function checkReady() {
+  document.getElementById('loadProgress').style.width = '100%';
+  if (!session) return;
+  // Enable UI
+  ['btnGenerate','btnReset','btnSave','btnSaveA','btnSaveB'].forEach(id => {
+    document.getElementById(id).disabled = false;
+  });
+  setStatus('ready', 'Model ready · browser inference');
+  document.getElementById('imageOverlay').classList.add('hidden');
+  // Switch to semantic tab if json is loaded
+  if (attrData) switchTab('semantic');
+  // Generate initial image
+  generateRandom();
+}
+
+// ─── Inference ────────────────────────────────────────────────
+let inferTimer = null;
+function runInference() {
+  if (!session) return;
+  clearTimeout(inferTimer);
+  inferTimer = setTimeout(_runInference, 60);  // debounce 60ms
+}
+
+async function _runInference() {
+  const frame = document.getElementById('imageFrame');
+  frame.classList.add('generating');
+  const t0 = performance.now();
+  try {
+    const tensor = new ort.Tensor('float32', z, [1, LATENT_DIM]);
+    const results = await session.run({ latent_z: tensor });
+    const output = results[Object.keys(results)[0]];
+    renderToCanvas(output.data, document.getElementById('output'));
+    const dt = performance.now() - t0;
+    document.getElementById('inferTime').textContent = `${dt.toFixed(0)} ms`;
+  } catch(e) {
+    console.error('Inference error:', e);
+  }
+  frame.classList.remove('generating');
+}
+
+function renderToCanvas(data, canvas) {
+  // data is Float32, shape [1,3,64,64], values in [-1,1]
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(64, 64);
+  const n = 64 * 64;
+  for (let i = 0; i < n; i++) {
+    const r = (data[i]         + 1) * 127.5;
+    const g = (data[n + i]     + 1) * 127.5;
+    const b = (data[2*n + i]   + 1) * 127.5;
+    img.data[4*i]   = Math.max(0, Math.min(255, r));
+    img.data[4*i+1] = Math.max(0, Math.min(255, g));
+    img.data[4*i+2] = Math.max(0, Math.min(255, b));
+    img.data[4*i+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ─── Actions ──────────────────────────────────────────────────
+function generateRandom() {
+  // Box-Muller for Gaussian samples
+  z = new Float32Array(LATENT_DIM);
+  for (let i = 0; i < LATENT_DIM; i += 2) {
+    const u1 = Math.random(), u2 = Math.random();
+    const r = Math.sqrt(-2 * Math.log(u1 + 1e-10));
+    z[i]   = r * Math.cos(2 * Math.PI * u2);
+    if (i+1 < LATENT_DIM) z[i+1] = r * Math.sin(2 * Math.PI * u2);
+  }
+  // Reset semantic sliders
+  for (const name of Object.keys(semanticOffsets)) {
+    semanticOffsets[name] = 0;
+    const s = document.getElementById(`ss_${name}`);
+    if (s) s.value = 0;
+    const v = document.getElementById(`sv_${name}`);
+    if (v) v.textContent = '0.00';
+  }
+  // Sync raw sliders
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const s = document.getElementById(`ds${i}`);
+    if (s) s.value = z[i];
+    const v = document.getElementById(`dv${i}`);
+    if (v) v.textContent = z[i].toFixed(2);
+  }
+  updateLatentGrid();
+  runInference();
+}
+
+function resetLatent() {
+  z = new Float32Array(LATENT_DIM);
+  for (const name of Object.keys(semanticOffsets)) {
+    semanticOffsets[name] = 0;
+    const s = document.getElementById(`ss_${name}`);
+    if (s) s.value = 0;
+    const v = document.getElementById(`sv_${name}`);
+    if (v) v.textContent = '0.00';
+  }
+  for (let i = 0; i < LATENT_DIM; i++) {
+    const s = document.getElementById(`ds${i}`);
+    if (s) s.value = 0;
+    const v = document.getElementById(`dv${i}`);
+    if (v) v.textContent = '0.00';
+  }
+  updateLatentGrid();
+  runInference();
+}
+
+function saveImage() {
+  const canvas = document.getElementById('output');
+  // Upscale to 512x512 for download
+  const big = document.createElement('canvas');
+  big.width = big.height = 512;
+  const ctx = big.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(canvas, 0, 0, 512, 512);
+  const a = document.createElement('a');
+  a.href = big.toDataURL('image/png');
+  a.download = `bvae_face_${Date.now()}.png`;
+  a.click();
+  notify('💾 Image saved');
+}
+
+// ─── Interpolation ────────────────────────────────────────────
+let zA = null, zB = null;
+
+function saveAsPointA() {
+  zA = z.slice();
+  // Render preview
+  _renderPreview(zA, 'previewA');
+  document.getElementById('pointA').classList.add('set');
+  notify('📍 Set point A');
+}
+
+function saveAsPointB() {
+  zB = z.slice();
+  _renderPreview(zB, 'previewB');
+  document.getElementById('pointB').classList.add('set');
+  notify('📍 Set point B');
+}
+
+async function _renderPreview(zVec, canvasId) {
+  if (!session) return;
+  const tensor = new ort.Tensor('float32', zVec, [1, LATENT_DIM]);
+  const results = await session.run({ latent_z: tensor });
+  const output = results[Object.keys(results)[0]];
+  renderToCanvas(output.data, document.getElementById(canvasId));
+}
+
+function loadPoint(pt) {
+  if (pt === 'A' && zA) { z = zA.slice(); updateLatentGrid(); runInference(); }
+  if (pt === 'B' && zB) { z = zB.slice(); updateLatentGrid(); runInference(); }
+}
+
+function interpolate(t) {
+  if (!zA || !zB) { notify('Set points A and B first'); return; }
+  const alpha = t / 100;
+  document.getElementById('interpT').textContent = alpha.toFixed(2);
+  const interp = new Float32Array(LATENT_DIM);
+  for (let i = 0; i < LATENT_DIM; i++) {
+    interp[i] = zA[i] * (1 - alpha) + zB[i] * alpha;
+  }
+  z = interp;
+  updateLatentGrid();
+  runInference();
+}
+
+// ─── UI helpers ───────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['semantic', 'dims', 'load'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.remove('active');
+    c.style.display = 'none';
+  });
+  const el = document.getElementById(`tab-${name}`);
+  if (el) { el.classList.add('active'); el.style.display = 'block'; }
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot ' + state;
+  document.getElementById('statusText').textContent = text;
+}
+
+let notifTimer;
+function notify(msg) {
+  const el = document.getElementById('notif');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────
+initLatentGrid();
+initDimSliders();
+switchTab('load');
+setStatus('', 'Load your model files →');
+</script>
+</body>
+</html>
