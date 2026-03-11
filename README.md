@@ -1,4 +1,4 @@
-β-VAE Face Explorer
+# β-VAE Face Explorer
 <img width="1909" height="846" alt="image" src="https://github.com/user-attachments/assets/47ad67a6-84b8-417a-8406-c8d026fc41cc" />
 
 An interactive web app for exploring the latent space of a β-Variational Autoencoder trained on CelebA faces.
