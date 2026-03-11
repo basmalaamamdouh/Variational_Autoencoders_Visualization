@@ -1,84 +1,80 @@
-# β-VAE Face Explorer
-<img width="1909" height="846" alt="image" src="https://github.com/user-attachments/assets/47ad67a6-84b8-417a-8406-c8d026fc41cc" />
+β-VAE Face Explorer
+<img width="1909" height="846" alt="β-VAE Face Explorer Screenshot" src="https://github.com/user-attachments/assets/47ad67a6-84b8-417a-8406-c8d026fc41cc" />
 
-An interactive web app for exploring the latent space of a β-Variational Autoencoder trained on CelebA faces.
+Explore the hidden features of human faces with AI.
+This project is an interactive web app that lets you play with the latent space of a β-Variational Autoencoder (β-VAE) trained on thousands of CelebA faces.
 
-The model compresses faces into a 16-dimensional latent vector.
-By changing those values, you can see how different attributes affect the generated face.
+The β-VAE compresses each face into a 16-dimensional vector, where each number represents a meaningful facial attribute. By adjusting these values, you can change expressions, hairstyles, age, and more, and see the face transform in real-time.
 
-Live Demo:
-https://basmalaamamdouh.github.io/Variational_Autoencoders_Visualization/
+Try it live: https://basmalaamamdouh.github.io/Variational_Autoencoders_Visualization/
 
-Features
+- Key Features
 
-Control facial attributes using semantic sliders
+Interactive Sliders: Control facial attributes like smiling, age, hair color, and accessories.
 
-Random face generation
+Random Face Generation: Instantly create new faces from the learned latent space.
 
-Interpolation between faces
+Face Interpolation: Smoothly transition between two faces to explore variations.
 
-Visualize the 16-dimensional latent vector
+Latent Space Visualization: See the 16-dimensional vector behind each face.
 
-Export generated faces as PNG
+Export Faces: Save generated faces as PNG images.
 
-Runs fully in the browser using ONNX Runtime (no backend)
+Fully Browser-Based: No backend required, powered by ONNX Runtime Web.
 
-Model
-Parameter	Value
-Model	β-Variational Autoencoder
-Dataset	CelebA
-Latent Dimensions	16
-β	4
-Image Size	64×64
-Framework	PyTorch → ONNX
+🔬 How It Works
 
-Attributes explored include:
+Training:
+The β-VAE is trained on the CelebA dataset to encode faces into a compact latent space.
 
-Smiling • Young • Male • Eyeglasses • Bald • Blond Hair • Pale Skin • Heavy Makeup • Wearing Hat • Wavy Hair
+Latent Space:
+Each face is represented as a 16-dimensional vector. Changing a value changes a specific attribute in the face (like smiling or age).
 
-Model Weights
+Decoding:
+The latent vector is fed into a decoder (ONNX model) to generate the face image in real-time.
 
-The ONNX model is larger than GitHub’s file size limit.
+Explorable Attributes: Smiling • Young • Male • Eyeglasses • Bald • Blond Hair • Pale Skin • Heavy Makeup • Wearing Hat • Wavy Hair
 
-Download it here:
-ONNX Model
+⚙️ Tech Stack
 
-Load the file in the Load Files tab of the app.
+PyTorch: Model training
 
-Run Locally
+ONNX Runtime Web: Real-time inference in the browser
+
+HTML / CSS / JavaScript: Frontend
+
+Kaggle GPU: Model training environment
+
+- Model Weights
+
+The model file is too large for GitHub, so download it here:
+Download β-VAE ONNX Model
+
+Load it in the app’s Load Files tab to start exploring.
+
+- Run Locally
 
 Clone the repo:
 
 git clone https://github.com/yourusername/vae-face-explorer
 
-Open:
+Open index.html in your browser.
 
-index.html
-
-in Chrome or Edge and load:
+Load the following files:
 
 vae_decoder.onnx
 
 attr_vectors.json
 
-Tech Stack
-
-PyTorch (training)
-
-ONNX Runtime Web (inference)
-
-HTML / CSS / JavaScript (frontend)
-
-Kaggle GPU (training)
-
-Files
+- Project Files
 index.html
 attr_vectors.json
 notebook.ipynb
 README.md
+- Why This Project?
 
-vae_decoder.onnx is hosted externally due to GitHub size limits.
-
-License
+This project demonstrates the power of disentangled latent spaces in generative models. It’s a hands-on way to understand how AI can encode complex features into simple numbers, allowing interactive manipulation of human faces — something that’s at the heart of research in computer vision and creative AI applications.
+___
+ License
 
 MIT
