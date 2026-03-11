@@ -7,7 +7,7 @@ This project is an interactive web app that lets you play with the latent space 
 The β-VAE compresses each face into a 16-dimensional vector, where each number represents a meaningful facial attribute. By adjusting these values, you can change expressions, hairstyles, age, and more, and see the face transform in real-time.
 
 Try it live: https://basmalaamamdouh.github.io/Variational_Autoencoders_Visualization/
-
+___
 - Key Features
 
 Interactive Sliders: Control facial attributes like smiling, age, hair color, and accessories.
@@ -21,8 +21,8 @@ Latent Space Visualization: See the 16-dimensional vector behind each face.
 Export Faces: Save generated faces as PNG images.
 
 Fully Browser-Based: No backend required, powered by ONNX Runtime Web.
-
-🔬 How It Works
+___
+ How It Works
 
 Training:
 The β-VAE is trained on the CelebA dataset to encode faces into a compact latent space.
@@ -34,8 +34,8 @@ Decoding:
 The latent vector is fed into a decoder (ONNX model) to generate the face image in real-time.
 
 Explorable Attributes: Smiling • Young • Male • Eyeglasses • Bald • Blond Hair • Pale Skin • Heavy Makeup • Wearing Hat • Wavy Hair
-
-⚙️ Tech Stack
+___
+ Tech Stack
 
 PyTorch: Model training
 
@@ -44,14 +44,14 @@ ONNX Runtime Web: Real-time inference in the browser
 HTML / CSS / JavaScript: Frontend
 
 Kaggle GPU: Model training environment
-
+___
 - Model Weights
 
 The model file is too large for GitHub, so download it here:
 Download β-VAE ONNX Model
 
 Load it in the app’s Load Files tab to start exploring.
-
+___
 - Run Locally
 
 Clone the repo:
@@ -65,12 +65,13 @@ Load the following files:
 vae_decoder.onnx
 
 attr_vectors.json
-
+___
 - Project Files
 index.html
 attr_vectors.json
 notebook.ipynb
 README.md
+___
 - Why This Project?
 
 This project demonstrates the power of disentangled latent spaces in generative models. It’s a hands-on way to understand how AI can encode complex features into simple numbers, allowing interactive manipulation of human faces — something that’s at the heart of research in computer vision and creative AI applications.
@@ -78,3 +79,4 @@ ___
  License
 
 MIT
+___
